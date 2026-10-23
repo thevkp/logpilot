@@ -1,5 +1,6 @@
+
 import re
-from collections.abc import Iterator, Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 LOG_PATTERN = re.compile(
@@ -7,6 +8,8 @@ LOG_PATTERN = re.compile(
     r"(DEBUG|INFO|WARNING|ERROR|CRITICAL) "
     r"(.+)$"
 )
+
+VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 
 def parse_log_line(
@@ -29,28 +32,25 @@ def parse_log_line(
     }
 
 
-def parse_logs(lines: list[str]) -> list[dict[str, str | int]]:
-    parsed_logs = []
-
+def parse_log_lines(
+    lines: Iterable[str],
+) -> Iterator[dict[str, str | int]]:
     for line_number, line in enumerate(lines, start=1):
         parsed = parse_log_line(line, line_number)
 
         if parsed is not None:
-            parsed_logs.append(parsed)
+            yield parsed
 
 
-    return parsed_logs
+def parse_logs(lines: list[str]) -> list[dict[str, str | int]]:
+    return list(parse_log_lines(lines))
 
 
-def parse_log_file(path: str | Path) -> Iterator[dict[str, str | int]]:
+def parse_log_file(
+    path: str | Path,
+) -> Iterator[dict[str, str | int]]:
     with open(path, "r", encoding="utf-8") as file:
-        for line_number, line in enumerate(file, start=1):
-            parsed = parse_log_line(line, line_number)
-
-            if parsed is not None:
-                yield parsed
-
-VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        yield from parse_log_lines(file)
 
 
 def filter_logs(
