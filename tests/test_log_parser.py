@@ -1,4 +1,4 @@
-from app.services.log_parser import parse_log_line
+from app.services.log_parser import parse_log_line, parse_logs
 
 
 def test_parse_valid_error_line():
@@ -33,3 +33,21 @@ def test_malformed_line_returns_none():
     )
 
     assert result is None
+
+
+def test_parse_multiple_lines_skips_malformed_lines():
+    lines = [
+        "2026-10-22 10:15:01 INFO Server started",
+        "malformed line",
+        "2026-10-22 10:15:03 ERROR Database connection failed",
+    ]
+
+    result = parse_logs(lines)
+
+    assert len(result) == 2
+
+    assert result[0]["level"] == "INFO"
+    assert result[0]["line_number"] == 1
+
+    assert result[1]["level"] == "ERROR"
+    assert result[1]["line_number"] == 3

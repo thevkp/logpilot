@@ -26,3 +26,16 @@ def parse_log_line(
         "message": message,
         "line_number": line_number,
     }
+
+
+def parse_logs(lines: list[str]) -> list[dict[str, str | int]]:
+    parsed_logs = []
+
+    for line_number, line in enumerate(lines, start=1):
+        parsed = parse_log_line(line, line_number)
+
+        if parsed is not None:
+            parsed_logs.append(parsed)
+
+
+    return parsed_logs
