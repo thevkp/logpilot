@@ -1,5 +1,6 @@
-
 import re
+from collections.abc import Iterator
+from pathlib import Path
 
 LOG_PATTERN = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) "
@@ -39,3 +40,12 @@ def parse_logs(lines: list[str]) -> list[dict[str, str | int]]:
 
 
     return parsed_logs
+
+
+def parse_log_file(path: str | Path) -> Iterator[dict[str, str | int]]:
+    with open(path, "r", encoding="utf-8") as file:
+        for line_number, line in enumerate(file, start=1):
+            parsed = parse_log_line(line, line_number)
+
+            if parsed is not None:
+                yield parsed
