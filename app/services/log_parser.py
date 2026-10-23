@@ -1,5 +1,5 @@
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Iterable
 from pathlib import Path
 
 LOG_PATTERN = re.compile(
@@ -49,3 +49,17 @@ def parse_log_file(path: str | Path) -> Iterator[dict[str, str | int]]:
 
             if parsed is not None:
                 yield parsed
+
+VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+
+def filter_logs(
+    entries: Iterable[dict[str, str | int]],
+    severity: str,
+) -> Iterator[dict[str, str | int]]:
+    if severity not in VALID_LEVELS:
+        raise ValueError(f"Unsupported severity: {severity}")
+
+    for entry in entries:
+        if entry["level"] == severity:
+            yield entry
