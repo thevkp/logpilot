@@ -72,3 +72,60 @@ def parse_uploaded_logs(
         "total": len(logs),
         "by_severity": by_severity,
     }
+
+
+
+@app.post("/logs/summary")
+def summarize_uploaded_logs(
+    file: UploadFile = File(...),
+    severity: str | None = Query(default=None),
+) -> dict[str, int | dict[str, int]]:
+    if severity is not None and severity not in VALID_LEVELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported severity: {severity}",
+        )
+
+    if (
+        file.size is not None
+        and file.size > MAX_UPLOAD_SIZE_BYTES
+    ):
+        raise HTTPException(
+            status_code=413,
+            detail="Uploaded file exceeds the 5 MiB size limit.",
+        )
+
+    counts = Counter()
+    total = 0
+
+    try:
+        with file.file as uploaded_file:
+            lines = (
+                line.decode("utf-8")
+                for line in uploaded_file
+            )
+
+            for entry in parse_log_lines(lines):
+                level = str(entry["level"])
+
+                if severity is not None and level != severity:
+                    continue
+
+                total += 1
+                counts[level] += 1
+
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file must contain valid UTF-8 text.",
+        ) from None
+
+    by_severity = {
+        level: counts.get(level, 0)
+        for level in VALID_LEVELS
+    }
+
+    return {
+        "total": total,
+        "by_severity": by_severity,
+    }
