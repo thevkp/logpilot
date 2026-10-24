@@ -1,4 +1,3 @@
-
 from collections import Counter
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -8,6 +7,8 @@ from app.services.log_parser import (
     filter_logs,
     parse_log_lines,
 )
+
+MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
 
 app = FastAPI(title="LogPilot")
 
@@ -31,13 +32,28 @@ def parse_uploaded_logs(
             detail=f"Unsupported severity: {severity}",
         )
 
-    with file.file as uploaded_file:
-        logs = list(
-            parse_log_lines(
-                line.decode("utf-8")
-                for line in uploaded_file
-            )
+    if (
+        file.size is not None
+        and file.size > MAX_UPLOAD_SIZE_BYTES
+    ):
+        raise HTTPException(
+            status_code=413,
+            detail="Uploaded file exceeds the 5 MiB size limit.",
         )
+
+    try:
+        with file.file as uploaded_file:
+            logs = list(
+                parse_log_lines(
+                    line.decode("utf-8")
+                    for line in uploaded_file
+                )
+            )
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file must contain valid UTF-8 text.",
+        ) from None
 
     if severity is not None:
         logs = list(filter_logs(logs, severity))
