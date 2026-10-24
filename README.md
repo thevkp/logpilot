@@ -92,12 +92,15 @@ curl -X POST \
 
 ### Error Handling
 
-The endpoint returns appropriate HTTP errors for common failure scenarios:
+The API uses HTTP status codes to distinguish invalid input from analysis-service failures:
 
-- `400 Bad Request` — invalid request parameters or uploaded content, where applicable.
-- `413 Request Entity Too Large` — upload exceeds the configured size limit.
-- `503 Service Unavailable` — the LLM provider is not configured.
-- `502 Bad Gateway` — the provider request fails or its response cannot be used.
+- `400 Bad Request` — uploaded file contains invalid UTF-8 text.
+- `413 Request Entity Too Large` — uploaded file exceeds the configured 5 MiB limit.
+- `422 Unprocessable Entity` — unsupported severity values or other request-validation errors.
+- `502 Bad Gateway` — the LLM provider request fails or its response cannot be used.
+- `503 Service Unavailable` — the LLM analysis service is not configured.
+
+Error responses include a `detail` field explaining the failure. Internal provider details should remain in server-side logs rather than being exposed to API clients.
 
 ### Testing
 
