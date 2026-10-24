@@ -41,6 +41,13 @@ def test_parse_logs_endpoint():
             },
         ],
         "total": 2,
+        "by_severity": {
+            "DEBUG": 0,
+            "INFO": 1,
+            "WARNING": 0,
+            "ERROR": 1,
+            "CRITICAL": 0,
+        },
     }
 
 
@@ -92,3 +99,39 @@ def test_parse_logs_with_invalid_severity():
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Unsupported severity: BOGUS"
+
+
+def test_parse_logs_returns_severity_summary():
+    client = TestClient(app)
+
+    log_content = (
+        "2026-10-24 10:00:00 INFO Server started\n"
+        "2026-10-24 10:01:00 ERROR Database failed\n"
+        "2026-10-24 10:02:00 INFO Request received\n"
+        "2026-10-24 10:03:00 CRITICAL Service unavailable\n"
+        "This is not a valid log line\n"
+    )
+
+    response = client.post(
+        "/logs/parse",
+        files={
+            "file": (
+                "test.log",
+                log_content.encode("utf-8"),
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] == 4
+    assert data["by_severity"] == {
+        "DEBUG": 0,
+        "INFO": 2,
+        "WARNING": 0,
+        "ERROR": 1,
+        "CRITICAL": 1,
+    }
