@@ -1,10 +1,14 @@
 import logging
 from time import perf_counter
 from collections import Counter
+from dotenv import load_dotenv
 
-from fastapi import FastAPI, File, Query, UploadFile
+load_dotenv()
+
+from fastapi import FastAPI, File, Query, UploadFile, HTTPException
 
 from app.schemas.logs import LogParseResponse, LogSummaryResponse
+from app.schemas.analysis import LogAnalysisResponse
 from app.services.api_errors import (
     MAX_UPLOAD_SIZE_BYTES,
     decode_uploaded_lines,
@@ -12,6 +16,11 @@ from app.services.api_errors import (
     validate_upload_size,
 )
 from app.services.log_parser import VALID_LEVELS, parse_log_lines
+from app.services.llm_analyzer import (
+    LLMAnalysisError,
+    LLMConfigurationError,
+    analyze_log_entries,
+)
 
 app = FastAPI(title="LogPilot")
 access_logger = logging.getLogger("logpilot.access")
@@ -137,3 +146,45 @@ def summarize_uploaded_logs(
         total=total,
         by_severity=by_severity,
     )
+@app.post("/logs/analyze", response_model=LogAnalysisResponse)
+async def analyze_logs(
+    file: UploadFile = File(...),
+    severity: str | None = Query(default=None),
+) -> LogAnalysisResponse:
+    """Analyze uploaded logs using the configured LLM provider."""
+
+    # Validate the UploadFile object, not its bytes.
+    validate_upload_size(file)
+
+    content = await file.read()
+    lines = decode_uploaded_lines(content.splitlines())
+
+    if severity is not None:
+        validate_severity(severity)
+        severity = severity.upper()
+
+    entries = list(parse_log_lines(lines))
+
+    if severity is not None:
+        entries = [
+            entry
+            for entry in entries
+            if str(entry["level"]).upper() == severity
+        ]
+
+    try:
+        return await analyze_log_entries(entries)
+
+    except LLMConfigurationError as exc:
+        access_logger.error("Log analysis provider is not configured")
+        raise HTTPException(
+            status_code=503,
+            detail="Log analysis service is not configured.",
+        ) from exc
+
+    except LLMAnalysisError as exc:
+        access_logger.warning("Log analysis provider request failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Log analysis failed. Please try again later.",
+        ) from exc
