@@ -1,3 +1,6 @@
+
+from collections import Counter
+
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 
 from app.services.log_parser import (
@@ -18,7 +21,10 @@ def health_check() -> dict[str, str]:
 def parse_uploaded_logs(
     file: UploadFile = File(...),
     severity: str | None = Query(default=None),
-) -> dict[str, list[dict[str, str | int]] | int]:
+) -> dict[
+    str,
+    list[dict[str, str | int]] | int | dict[str, int],
+]:
     if severity is not None and severity not in VALID_LEVELS:
         raise HTTPException(
             status_code=422,
@@ -36,7 +42,17 @@ def parse_uploaded_logs(
     if severity is not None:
         logs = list(filter_logs(logs, severity))
 
+    severity_counts = Counter(
+        str(entry["level"]) for entry in logs
+    )
+
+    by_severity = {
+        level: severity_counts.get(level, 0)
+        for level in VALID_LEVELS
+    }
+
     return {
         "logs": logs,
         "total": len(logs),
+        "by_severity": by_severity,
     }
