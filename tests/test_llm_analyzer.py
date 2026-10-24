@@ -2,8 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
-from app.schemas.analysis import LogAnalysisResponse
+from app.schemas.analysis import LogAnalysisResponse, LogEvidence
 from app.services import llm_analyzer
 from app.services.llm_analyzer import (
     LLMAnalysisError,
@@ -273,4 +274,50 @@ async def test_invalid_response_does_not_log_sensitive_input(
             await analyze_log_entries([make_entry(1)])
 
     assert sensitive_value not in caplog.text
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("line_number", [0, -1])
+def test_log_evidence_rejects_invalid_line_number(line_number):
+    with pytest.raises(ValidationError):
+        LogEvidence(
+            line_number=line_number,
+            message="Request failed",
+        )
+
+
+def test_log_evidence_rejects_empty_message():
+    with pytest.raises(ValidationError):
+        LogEvidence(
+            line_number=1,
+            message="",
+        )
+
+@pytest.mark.asyncio
+async def test_analyze_log_entries_rejects_empty_evidence_message(
+    monkeypatch,
+):
+    payload = LogAnalysisResponse(
+        summary="The request failed.",
+        likely_causes=["A downstream dependency may be unavailable."],
+        evidence=[],
+        recommended_steps=["Check dependency health."],
+        confidence="medium",
+        limitations=[],
+    ).model_dump()
+
+    payload["evidence"] = [
+        {"line_number": 1, "message": ""}
+    ]
+
+    client = make_mock_client(__import__("json").dumps(payload))
+    monkeypatch.setattr(
+        llm_analyzer,
+        "get_groq_client",
+        lambda: client,
+    )
+
+    with pytest.raises(LLMAnalysisError, match="schema"):
+        await analyze_log_entries([make_entry(1)])
+
     client.close.assert_awaited_once()
