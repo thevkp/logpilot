@@ -288,3 +288,61 @@ def test_summary_rejects_oversized_file():
     assert response.json() == {
         "detail": "Uploaded file exceeds the 5 MiB size limit.",
     }
+
+
+def test_parse_logs_supports_pagination():
+    content = (
+        "2026-10-24 10:00:00 INFO Server started\n"
+        "2026-10-24 10:00:01 ERROR Database failed\n"
+        "2026-10-24 10:00:02 WARNING Slow request\n"
+        "2026-10-24 10:00:03 ERROR Request failed\n"
+    )
+
+    response = client.post(
+        "/logs/parse?limit=2&offset=1",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] == 4
+    assert [entry["level"] for entry in data["logs"]] == [
+        "ERROR",
+        "WARNING",
+    ]
+    assert data["by_severity"]["ERROR"] == 2
+    assert data["by_severity"]["INFO"] == 1
+
+
+def test_parse_logs_pagination_returns_empty_page_past_end():
+    content = (
+        "2026-10-24 10:00:00 INFO Server started\n"
+        "2026-10-24 10:00:01 ERROR Database failed\n"
+    )
+
+    response = client.post(
+        "/logs/parse?limit=2&offset=10",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["logs"] == []
+    assert response.json()["total"] == 2
+
+
+def test_parse_logs_rejects_invalid_pagination_parameters():
+    content = "2026-10-24 10:00:00 INFO Server started\n"
+
+    for query in ("limit=0", "limit=1001", "offset=-1"):
+        response = client.post(
+            f"/logs/parse?{query}",
+            files={
+                "file": ("sample.log", content, "text/plain"),
+            },
+        )
+        assert response.status_code == 422
