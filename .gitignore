@@ -12,6 +12,7 @@ env/
 # Environment variables and secrets
 .env
 .env.*
+!.env.example
 
 # Allow the example environment file
 !.env.example
