@@ -1,16 +1,16 @@
+
 from collections import Counter
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-
-from app.services.log_parser import (
-    VALID_LEVELS,
-    filter_logs,
-    parse_log_lines,
-)
+from fastapi import FastAPI, File, Query, UploadFile
 
 from app.schemas.logs import LogParseResponse, LogSummaryResponse
-
-MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
+from app.services.api_errors import (
+    MAX_UPLOAD_SIZE_BYTES,
+    decode_uploaded_lines,
+    validate_severity,
+    validate_upload_size,
+)
+from app.services.log_parser import VALID_LEVELS, parse_log_lines
 
 app = FastAPI(title="LogPilot")
 
@@ -19,6 +19,7 @@ app = FastAPI(title="LogPilot")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
+
 @app.post("/logs/parse", response_model=LogParseResponse)
 def parse_uploaded_logs(
     file: UploadFile = File(...),
@@ -26,24 +27,9 @@ def parse_uploaded_logs(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     search: str | None = Query(default=None, min_length=1),
-) -> dict[
-    str,
-    list[dict[str, str | int]] | int | dict[str, int],
-]:
-    if severity is not None and severity not in VALID_LEVELS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unsupported severity: {severity}",
-        )
-
-    if (
-        file.size is not None
-        and file.size > MAX_UPLOAD_SIZE_BYTES
-    ):
-        raise HTTPException(
-            status_code=413,
-            detail="Uploaded file exceeds the 5 MiB size limit.",
-        )
+) -> LogParseResponse:
+    validate_severity(severity)
+    validate_upload_size(file)
 
     search_term = search.strip().casefold() if search else None
 
@@ -51,42 +37,32 @@ def parse_uploaded_logs(
     counts = Counter()
     total = 0
 
-    try:
-        with file.file as uploaded_file:
-            lines = (
-                line.decode("utf-8")
-                for line in uploaded_file
-            )
+    with file.file as uploaded_file:
+        lines = decode_uploaded_lines(uploaded_file)
 
-            for entry in parse_log_lines(lines):
-                level = str(entry["level"])
-                message = str(entry["message"])
+        for entry in parse_log_lines(lines):
+            level = str(entry["level"])
+            message = str(entry["message"])
 
-                if severity is not None and level != severity:
-                    continue
+            if severity is not None and level != severity:
+                continue
 
-                if (
-                    search_term is not None
-                    and search_term not in message.casefold()
-                ):
-                    continue
+            if (
+                search_term is not None
+                and search_term not in message.casefold()
+            ):
+                continue
 
-                counts[level] += 1
+            counts[level] += 1
 
-                if total >= offset and len(logs) < limit:
-                    logs.append(entry)
+            if total >= offset and len(logs) < limit:
+                logs.append(entry)
 
-                total += 1
-
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded file must contain valid UTF-8 text.",
-        ) from None
+            total += 1
 
     by_severity = {
         level: counts.get(level, 0)
-        for level in VALID_LEVELS
+        for level in sorted(VALID_LEVELS)
     }
 
     return LogParseResponse(
@@ -95,54 +71,33 @@ def parse_uploaded_logs(
         by_severity=by_severity,
     )
 
+
 @app.post("/logs/summary", response_model=LogSummaryResponse)
 def summarize_uploaded_logs(
     file: UploadFile = File(...),
     severity: str | None = Query(default=None),
-) -> dict[str, int | dict[str, int]]:
-    if severity is not None and severity not in VALID_LEVELS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unsupported severity: {severity}",
-        )
-
-    if (
-        file.size is not None
-        and file.size > MAX_UPLOAD_SIZE_BYTES
-    ):
-        raise HTTPException(
-            status_code=413,
-            detail="Uploaded file exceeds the 5 MiB size limit.",
-        )
+) -> LogSummaryResponse:
+    validate_severity(severity)
+    validate_upload_size(file)
 
     counts = Counter()
     total = 0
 
-    try:
-        with file.file as uploaded_file:
-            lines = (
-                line.decode("utf-8")
-                for line in uploaded_file
-            )
+    with file.file as uploaded_file:
+        lines = decode_uploaded_lines(uploaded_file)
 
-            for entry in parse_log_lines(lines):
-                level = str(entry["level"])
+        for entry in parse_log_lines(lines):
+            level = str(entry["level"])
 
-                if severity is not None and level != severity:
-                    continue
+            if severity is not None and level != severity:
+                continue
 
-                total += 1
-                counts[level] += 1
-
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded file must contain valid UTF-8 text.",
-        ) from None
+            total += 1
+            counts[level] += 1
 
     by_severity = {
         level: counts.get(level, 0)
-        for level in VALID_LEVELS
+        for level in sorted(VALID_LEVELS)
     }
 
     return LogSummaryResponse(
