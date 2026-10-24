@@ -8,6 +8,8 @@ from app.services.log_parser import (
     parse_log_lines,
 )
 
+from app.schemas.logs import LogParseResponse, LogSummaryResponse
+
 MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
 
 app = FastAPI(title="LogPilot")
@@ -17,7 +19,7 @@ app = FastAPI(title="LogPilot")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
-@app.post("/logs/parse")
+@app.post("/logs/parse", response_model=LogParseResponse)
 def parse_uploaded_logs(
     file: UploadFile = File(...),
     severity: str | None = Query(default=None),
@@ -87,13 +89,13 @@ def parse_uploaded_logs(
         for level in VALID_LEVELS
     }
 
-    return {
-        "logs": logs,
-        "total": total,
-        "by_severity": by_severity,
-    }
+    return LogParseResponse(
+        logs=logs,
+        total=total,
+        by_severity=by_severity,
+    )
 
-@app.post("/logs/summary")
+@app.post("/logs/summary", response_model=LogSummaryResponse)
 def summarize_uploaded_logs(
     file: UploadFile = File(...),
     severity: str | None = Query(default=None),
@@ -143,7 +145,7 @@ def summarize_uploaded_logs(
         for level in VALID_LEVELS
     }
 
-    return {
-        "total": total,
-        "by_severity": by_severity,
-    }
+    return LogSummaryResponse(
+        total=total,
+        by_severity=by_severity,
+    )
