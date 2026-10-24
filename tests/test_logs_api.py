@@ -135,3 +135,43 @@ def test_parse_logs_returns_severity_summary():
         "ERROR": 1,
         "CRITICAL": 1,
     }
+
+
+def test_parse_logs_rejects_invalid_utf8():
+    response = client.post(
+        "/logs/parse",
+        files={
+            "file": (
+                "invalid.log",
+                b"2026-10-24 10:00:00 ERROR Bad byte: \xff\n",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Uploaded file must contain valid UTF-8 text."
+    }
+
+
+def test_parse_logs_rejects_oversized_file():
+    from app.main import MAX_UPLOAD_SIZE_BYTES
+
+    oversized_content = b"x" * (MAX_UPLOAD_SIZE_BYTES + 1)
+
+    response = client.post(
+        "/logs/parse",
+        files={
+            "file": (
+                "large.log",
+                oversized_content,
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": "Uploaded file exceeds the 5 MiB size limit."
+    }
