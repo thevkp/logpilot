@@ -17,13 +17,13 @@ app = FastAPI(title="LogPilot")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
-
 @app.post("/logs/parse")
 def parse_uploaded_logs(
     file: UploadFile = File(...),
     severity: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None, min_length=1),
 ) -> dict[
     str,
     list[dict[str, str | int]] | int | dict[str, int],
@@ -43,6 +43,8 @@ def parse_uploaded_logs(
             detail="Uploaded file exceeds the 5 MiB size limit.",
         )
 
+    search_term = search.strip().casefold() if search else None
+
     logs: list[dict[str, str | int]] = []
     counts = Counter()
     total = 0
@@ -56,8 +58,15 @@ def parse_uploaded_logs(
 
             for entry in parse_log_lines(lines):
                 level = str(entry["level"])
+                message = str(entry["message"])
 
                 if severity is not None and level != severity:
+                    continue
+
+                if (
+                    search_term is not None
+                    and search_term not in message.casefold()
+                ):
                     continue
 
                 counts[level] += 1
@@ -83,7 +92,6 @@ def parse_uploaded_logs(
         "total": total,
         "by_severity": by_severity,
     }
-
 
 @app.post("/logs/summary")
 def summarize_uploaded_logs(

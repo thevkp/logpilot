@@ -346,3 +346,90 @@ def test_parse_logs_rejects_invalid_pagination_parameters():
             },
         )
         assert response.status_code == 422
+
+
+
+def test_parse_logs_searches_messages_case_insensitively():
+    content = (
+        "2026-10-24 10:00:00 INFO Database connected\n"
+        "2026-10-24 10:00:01 ERROR Database connection failed\n"
+        "2026-10-24 10:00:02 ERROR Request timed out\n"
+        "2026-10-24 10:00:03 WARNING DATABASE is slow\n"
+    )
+
+    response = client.post(
+        "/logs/parse?search=database",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] == 3
+    assert [entry["level"] for entry in data["logs"]] == [
+        "INFO",
+        "ERROR",
+        "WARNING",
+    ]
+    assert data["by_severity"]["INFO"] == 1
+    assert data["by_severity"]["ERROR"] == 1
+    assert data["by_severity"]["WARNING"] == 1
+
+
+def test_parse_logs_combines_search_severity_and_pagination():
+    content = (
+        "2026-10-24 10:00:00 ERROR Database unavailable\n"
+        "2026-10-24 10:00:01 ERROR Database connection failed\n"
+        "2026-10-24 10:00:02 WARNING Database is slow\n"
+        "2026-10-24 10:00:03 ERROR Request timed out\n"
+    )
+
+    response = client.post(
+        "/logs/parse?search=database&severity=ERROR&limit=1&offset=1",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["total"] == 2
+    assert len(data["logs"]) == 1
+    assert data["logs"][0]["message"] == "Database connection failed"
+    assert data["by_severity"]["ERROR"] == 2
+    assert data["by_severity"]["WARNING"] == 0
+
+
+def test_parse_logs_search_returns_empty_results_when_no_match():
+    content = "2026-10-24 10:00:00 INFO Server started\n"
+
+    response = client.post(
+        "/logs/parse?search=database",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["logs"] == []
+    assert response.json()["total"] == 0
+    assert all(
+        count == 0
+        for count in response.json()["by_severity"].values()
+    )
+
+
+def test_parse_logs_rejects_empty_search_parameter():
+    content = "2026-10-24 10:00:00 INFO Server started\n"
+
+    response = client.post(
+        "/logs/parse?search=",
+        files={
+            "file": ("sample.log", content, "text/plain"),
+        },
+    )
+
+    assert response.status_code == 422
