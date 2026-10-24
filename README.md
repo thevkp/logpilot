@@ -13,17 +13,58 @@ LogPilot uses the Groq API to analyze parsed application logs and return structu
 - **Validated responses:** Uses Pydantic to validate the structured output returned by the LLM.
 - **Configurable provider:** Uses environment variables for Groq credentials, model selection, and timeout configuration.
 
+### Setup
+
+**Requirements:** Python 3.12 and a Groq API key for AI-powered analysis.
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/thevkp/logpilot.git
+cd logpilot
+```
+
+Create and activate a virtual environment:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+Install dependencies and create your local configuration file:
+
+```bash
+python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edit `.env` and replace the placeholder `GROQ_API_KEY` with your own key. The model and timeout have defaults in `.env.example`.
+
+Start the development server:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+The API will be available at `http://127.0.0.1:8000`. Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
+
 ### Configuration
 
-Set the following variables in your local `.env` file:
+Configure the following environment variables in `.env`:
+
+| Variable               | Description                                          |
+| ---------------------- | ---------------------------------------------------- |
+| `GROQ_API_KEY`         | Your Groq API key. Required for AI-powered analysis. |
+| `GROQ_MODEL`           | Groq model identifier used for analysis.             |
+| `GROQ_TIMEOUT_SECONDS` | Timeout for provider requests, in seconds.           |
+
+Example:
 
 ```dotenv
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=openai/gpt-oss-20b
 GROQ_TIMEOUT_SECONDS=30
 ```
-
-Install the project's dependencies and start the FastAPI application using the existing development instructions in this repository.
 
 **Security:** Never commit your real `.env` file or expose your API key. Use `.env.example` as the configuration template.
 
@@ -109,5 +150,4 @@ Run the complete test suite:
 ```bash
 python -m pytest -q
 ```
-
-The feature was verified with **51 passing tests** after merging into `main`.
+The test suite covers API endpoints, log parsing, request validation, LLM analysis, and request logging.

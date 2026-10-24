@@ -146,6 +146,9 @@ def summarize_uploaded_logs(
         total=total,
         by_severity=by_severity,
     )
+
+
+
 @app.post("/logs/analyze", response_model=LogAnalysisResponse)
 async def analyze_logs(
     file: UploadFile = File(...),
@@ -153,17 +156,17 @@ async def analyze_logs(
 ) -> LogAnalysisResponse:
     """Analyze uploaded logs using the configured LLM provider."""
 
-    # Validate the UploadFile object, not its bytes.
     validate_upload_size(file)
-
-    content = await file.read()
-    lines = decode_uploaded_lines(content.splitlines())
 
     if severity is not None:
         validate_severity(severity)
         severity = severity.upper()
 
-    entries = list(parse_log_lines(lines))
+    # Parse directly from the uploaded file instead of reading it all
+    # into a separate bytes object first.
+    with file.file as uploaded_file:
+        lines = decode_uploaded_lines(uploaded_file)
+        entries = list(parse_log_lines(lines))
 
     if severity is not None:
         entries = [

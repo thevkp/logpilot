@@ -1,4 +1,3 @@
-
 from io import BytesIO
 
 import pytest
@@ -11,7 +10,6 @@ from app.services.api_errors import (
     validate_severity,
     validate_upload_size,
 )
-
 
 def test_validate_severity_accepts_valid_severity():
     validate_severity("ERROR")
@@ -44,12 +42,25 @@ def test_validate_upload_size_rejects_oversized_file():
         "Uploaded file exceeds the 5 MiB size limit."
     )
 
+def test_validate_upload_size_checks_file_when_size_is_unknown():
+    upload = UploadFile(
+        file=BytesIO(b"x" * (MAX_UPLOAD_SIZE_BYTES + 1)),
+        size=None,
+        filename="large.log",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_upload_size(upload)
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == (
+        "Uploaded file exceeds the 5 MiB size limit."
+    )
 
 def test_decode_uploaded_lines_returns_utf8_text():
     lines = list(decode_uploaded_lines(BytesIO(b"INFO started\nERROR failed\n")))
 
     assert lines == ["INFO started\n", "ERROR failed\n"]
-
 
 def test_decode_uploaded_lines_rejects_invalid_utf8():
     with pytest.raises(HTTPException) as exc_info:

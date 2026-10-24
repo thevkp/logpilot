@@ -18,15 +18,20 @@ def validate_severity(severity: str | None) -> None:
 
 
 def validate_upload_size(file: UploadFile) -> None:
-    if (
-        file.size is not None
-        and file.size > MAX_UPLOAD_SIZE_BYTES
-    ):
+    size = file.size
+
+    # Fall back to measuring the underlying file if size is unknown.
+    if size is None:
+        current_position = file.file.tell()
+        file.file.seek(0, 2)
+        size = file.file.tell()
+        file.file.seek(current_position)
+
+    if size > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=413,
             detail="Uploaded file exceeds the 5 MiB size limit.",
         )
-
 
 def decode_uploaded_lines(
     uploaded_file: BinaryIO,

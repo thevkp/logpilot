@@ -136,3 +136,37 @@ def test_analyze_endpoint_returns_503_when_provider_is_unconfigured(
     assert response.json()["detail"] == (
         "Log analysis service is not configured."
     )
+
+
+
+def test_analyze_endpoint_rejects_oversized_file(monkeypatch):
+    from app.services.api_errors import MAX_UPLOAD_SIZE_BYTES
+
+    async def unexpected_analyze(entries):
+        raise AssertionError(
+            "LLM analysis must not run for an oversized upload"
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "analyze_log_entries",
+        unexpected_analyze,
+    )
+
+    oversized_content = b"x" * (MAX_UPLOAD_SIZE_BYTES + 1)
+
+    response = client.post(
+        "/logs/analyze",
+        files={
+            "file": (
+                "large.log",
+                oversized_content,
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == (
+        "Uploaded file exceeds the 5 MiB size limit."
+    )
