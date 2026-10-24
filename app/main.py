@@ -1,4 +1,5 @@
-
+import logging
+from time import perf_counter
 from collections import Counter
 
 from fastapi import FastAPI, File, Query, UploadFile
@@ -13,6 +14,38 @@ from app.services.api_errors import (
 from app.services.log_parser import VALID_LEVELS, parse_log_lines
 
 app = FastAPI(title="LogPilot")
+access_logger = logging.getLogger("logpilot.access")
+
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start_time = perf_counter()
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (perf_counter() - start_time) * 1000
+
+        access_logger.exception(
+            "request_failed method=%s path=%s status_code=500 duration_ms=%.2f",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
+
+    duration_ms = (perf_counter() - start_time) * 1000
+
+    access_logger.info(
+        "request_completed method=%s path=%s status_code=%s duration_ms=%.2f",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+
+    return response
+
 
 
 @app.get("/health")
