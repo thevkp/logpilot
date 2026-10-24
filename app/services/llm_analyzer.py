@@ -220,24 +220,29 @@ Each evidence item must contain line_number and message.
 
     except (json.JSONDecodeError, ValidationError) as exc:
         logger.warning(
-            "Groq returned invalid analysis JSON/schema: %s",
-            str(exc),
+            "Groq returned invalid analysis JSON/schema. "
+            "Exception type: %s",
+            type(exc).__name__,
         )
         raise LLMAnalysisError(
             "Groq returned a response that did not match "
             "the analysis schema."
         ) from exc
-
     except Exception as exc:
         # Keep the detailed exception in server logs only.
-        logger.exception(
-            "Groq request failed. Exception type: %s; details: %s",
+        logger.error(
+            "Groq request failed. Exception type: %s",
             type(exc).__name__,
-            str(exc),
         )
         raise LLMAnalysisError(
             "Provider request failed."
         ) from exc
 
     finally:
-        await client.close()
+        try:
+            await client.close()
+        except Exception as exc:
+            logger.warning(
+                "Failed to close Groq client. Exception type: %s",
+                type(exc).__name__,
+            )

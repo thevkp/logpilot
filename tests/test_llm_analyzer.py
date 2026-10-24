@@ -131,6 +131,54 @@ async def test_analyze_log_entries_handles_provider_failure(monkeypatch):
 
     client.close.assert_awaited_once()
 
+@pytest.mark.asyncio
+async def test_close_failure_does_not_mask_provider_failure(
+    monkeypatch,
+    caplog,
+):
+    client = make_mock_client("{}")
+    client.chat.completions.create.side_effect = RuntimeError(
+        "provider down"
+    )
+    client.close.side_effect = RuntimeError("close failed")
+
+    monkeypatch.setattr(
+        llm_analyzer,
+        "get_groq_client",
+        lambda: client,
+    )
+
+    with caplog.at_level("WARNING", logger=llm_analyzer.__name__):
+        with pytest.raises(
+            LLMAnalysisError,
+            match="Provider request failed",
+        ):
+            await analyze_log_entries([make_entry(1)])
+
+    assert "Failed to close Groq client" in caplog.text
+    assert "close failed" not in caplog.text
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_does_not_log_exception_details(
+    monkeypatch,
+    caplog,
+):
+    client = make_mock_client("{}")
+    client.chat.completions.create.side_effect = RuntimeError(
+        "sensitive provider response details"
+    )
+    monkeypatch.setattr(llm_analyzer, "get_groq_client", lambda: client)
+
+    with caplog.at_level("ERROR", logger=llm_analyzer.__name__):
+        with pytest.raises(LLMAnalysisError, match="Provider request failed"):
+            await analyze_log_entries([make_entry(1)])
+
+    assert "RuntimeError" in caplog.text
+    assert "sensitive provider response details" not in caplog.text
+    client.close.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_missing_api_key_is_a_configuration_error(monkeypatch):
@@ -151,3 +199,78 @@ async def test_empty_entries_do_not_call_provider(monkeypatch):
 
     assert result.confidence == "low"
     assert result.evidence == []
+
+@pytest.mark.asyncio
+async def test_close_failure_does_not_mask_success(monkeypatch):
+    client = make_mock_client(valid_json_response())
+    client.close.side_effect = RuntimeError("close failed")
+
+    monkeypatch.setattr(
+        llm_analyzer,
+        "get_groq_client",
+        lambda: client,
+    )
+
+    result = await analyze_log_entries([make_entry(1)])
+
+    assert isinstance(result, LogAnalysisResponse)
+    client.close.assert_awaited_once()
+
+@pytest.mark.parametrize(
+    "timeout_value",
+    ["invalid", "0", "-1"],
+)
+def test_get_groq_client_rejects_invalid_timeout(
+    monkeypatch,
+    timeout_value,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "test-api-key")
+    monkeypatch.setenv("GROQ_TIMEOUT_SECONDS", timeout_value)
+
+    with pytest.raises(LLMConfigurationError):
+        llm_analyzer.get_groq_client()
+
+def test_get_groq_client_uses_configured_timeout(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-api-key")
+    monkeypatch.setenv("GROQ_TIMEOUT_SECONDS", "12")
+
+    mock_client = object()
+    mock_groq = lambda **kwargs: mock_client
+
+    monkeypatch.setattr(llm_analyzer, "AsyncGroq", mock_groq)
+
+    client = llm_analyzer.get_groq_client()
+
+    assert client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_invalid_response_does_not_log_sensitive_input(
+    monkeypatch,
+    caplog,
+):
+    sensitive_value = "secret-customer-token-123"
+    response = (
+        '{"summary": "", '
+        '"likely_causes": [], '
+        '"evidence": [], '
+        '"recommended_steps": [], '
+        '"confidence": "medium", '
+        '"limitations": [], '
+        f'"unexpected": "{sensitive_value}"'
+        '}'
+    )
+
+    client = make_mock_client(response)
+    monkeypatch.setattr(
+        llm_analyzer,
+        "get_groq_client",
+        lambda: client,
+    )
+
+    with caplog.at_level("WARNING", logger=llm_analyzer.__name__):
+        with pytest.raises(LLMAnalysisError):
+            await analyze_log_entries([make_entry(1)])
+
+    assert sensitive_value not in caplog.text
+    client.close.assert_awaited_once()
